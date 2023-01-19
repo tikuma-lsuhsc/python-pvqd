@@ -12,6 +12,9 @@
 .. |license| image:: https://img.shields.io/github/license/tikuma-lsuhsc/python-pvqd
   :alt: GitHub
 
+.. note::
+   This Python package is still under development.
+
 This Python module provides functions to retrieve data and information easily from 
 Voice Foundation's Pathological Voice Quality Database.
 
@@ -34,7 +37,6 @@ Use
 
   # to initialize (must call this once in every Python session)
   pvqd = PVQD('<path to the root directory of the extracted database>')
-
 
   # to get a copy of the full database with averaged CAPE-V scores
   df = pvqd.query(include_cape_v=True)

@@ -4,24 +4,27 @@ TODO: download files directly from https://prod-dcd-datasets-cache-zipfiles.s3.e
 """
 
 
-__version__ = "0.1.0"
+__version__ = "0.1.0.dev1"
 
 import pandas as pd
 from os import path
 import numpy as np
 from glob import glob as _glob
-import re, operator
+import re
 import wave
 from collections.abc import Sequence
 
 
 class PVQD:
-    def __init__(self, dbdir):
+    def __init__(self, dbdir, default_type="/a/", padding=0.0):
         """PVQD constructor
 
         :param dbdir: path to the cdrom drive or the directory hosting a copy of the database
         :type dbdir: str
         """
+
+        self.default_type = default_type
+        self.default_padding = padding
 
         # database variables
         self._dir = None  # database dir
@@ -118,6 +121,10 @@ class PVQD:
             index=[re.match(r"(\D+\d+)", f)[1].upper() for f in files],
             name="File",
         )
+
+    @property
+    def task_types(self):
+        return self._audio_timing.columns.get_level_values(0)
 
     def query(
         self,
@@ -216,7 +223,7 @@ class PVQD:
 
     def get_files(
         self,
-        type,
+        type=None,
         auxdata_fields=None,
         include_cape_v=None,
         include_grbas=None,
@@ -225,8 +232,8 @@ class PVQD:
     ):
         """get WAV filepaths, and starting and ending time markers
 
-        :param type: utterance type
-        :type type: "/a/", "/i/", "blue", "hard", "away", "egg", "lemon", or "peter"
+        :param type: utterance type, defaults to None, which is synonymous to "all"
+        :type type: "all", "/a/", "/i/", "blue", "hard", "away", "egg", "lemon", or "peter", optional
         :param auxdata_fields: names of auxiliary data fields to return, defaults to None
         :type auxdata_fields: sequence of str, optional
         :param include_cape_v: True to include all CAPE-V scales, str or list of str to specify which scale, defaults to None
@@ -263,12 +270,16 @@ class PVQD:
         dir = self._audio_dir
         df = pd.DataFrame(self._audio_files.map(lambda v: path.join(dir, v)))
 
-        try:
-            df = df.join(self._audio_timing[type])
-        except:
-            raise ValueError(
-                f'Unknown type: {type} (must be one of "/a/", "/i/", "blue", "hard", "away", "egg", "lemon", or "peter")'
-            )
+        if bool(type) and type != "all":
+            try:
+                df = df.join(self._audio_timing[type])
+            except:
+                raise ValueError(
+                    f'Unknown type: {type} (must be one of "/a/", "/i/", "blue", "hard", "away", "egg", "lemon", or "peter")'
+                )
+
+        # eliminate entries without data
+        df = df[df[["File", "Start", "End"]].notna().all(axis=1)]
 
         # get
         if (
@@ -294,7 +305,7 @@ class PVQD:
 
     def iter_data(
         self,
-        type,
+        type=None,
         auxdata_fields=None,
         normalize=True,
         include_cape_v=None,
@@ -364,19 +375,86 @@ class PVQD:
         * For all other columns, a sequence of allowable values
         """
 
-        files = self.get_files(
+        df = self.get_files(
             type,
             auxdata_fields,
-            diagnoses_filter=diagnoses_filter,
+            include_cape_v,
+            include_grbas,
+            rating_stats,
             **filters,
         )
 
-        hasaux = auxdata_fields is not None
-        if hasaux:
-            files, auxdata = files
+        aux_cols = df.columns[3:]
 
-        for i, file in enumerate(files):
-            out = nspfile.read(file, channels)
-            if normalize:
-                out = (out[0], out[1] / 2.0**15)
-            yield (*out, auxdata.loc[i, :]) if hasaux else out
+        for id, file, tstart, tend, *auxdata in df.itertuples():
+            framerate, x = self._read_file(file, tstart, tend, normalize)
+
+            if bool(auxdata):
+                yield id, framerate, x, pd.Series(
+                    list(auxdata), index=aux_cols, name=id
+                )
+            else:
+                yield id, framerate, x
+
+    def read_data(self, id, type=None, normalize=True, padding=None):
+
+        if not type:
+            type = self.default_type
+
+        if type != "all":
+            tstart, tend = self._audio_timing.loc[id, type]
+
+        else:
+            tstart = tend = None
+
+        return self._read_file(
+            path.join(self._audio_dir, self._audio_files[id]),
+            tstart,
+            tend,
+            normalize,
+            padding,
+        )
+
+    def _read_file(self, file, tstart=None, tend=None, normalize=True, padding=None):
+
+        if not padding:
+            padding = self.default_padding
+
+        if padding:
+            id = re.match(r"(\D+\d+)", path.basename(file))[1].upper()
+
+            ts = self._audio_timing.loc[id].sort_values()
+            type = ts[ts == tstart].index[0][0]
+            i = np.where(ts.index.get_loc(type))[0]
+
+            tstart -= padding
+            tend += padding
+
+            talt = ts.iloc[i[0] - 1] if i[0] > 0 else 0.0
+            if tstart < talt:
+                tstart = talt
+
+            if i[1] + 1 < len(ts):
+                talt = ts.iloc[i[1] + 1]
+                if tend > talt:
+                    tend = talt
+
+        with wave.open(file) as wobj:
+            nchannels, sampwidth, framerate, nframes, *_ = wobj.getparams()
+            dtype = f"<i{sampwidth}" if sampwidth > 1 else "u1"
+            n0 = round(framerate * tstart) if tstart else 0
+            n1 = round(framerate * tend) if tend else nframes
+            b = wobj.readframes(n1)
+
+        x = np.frombuffer(b, dtype, offset=n0 * nchannels * sampwidth)
+
+        if nchannels > 1:
+            x = x.reshape(-1, nchannels)
+
+        if normalize:
+            x = x / 2.0 ** (sampwidth * 8 - 1 if sampwidth > 1 else 8)
+
+        return framerate, x
+
+    def __getitem__(self, key):
+        return self.read_data(key)

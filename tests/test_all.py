@@ -41,7 +41,17 @@ def test_files(pvqd):
 
 
 def test_iter_data(pvqd):
-    for fs, x in pvqd.iter_data("rainbow"):
+    for id, fs, x in pvqd.iter_data("/a/"):
         pass
-    for fs, x, info in pvqd.iter_data("ah", auxdata_fields=["SEX", "AGE", "NORM"]):
+    for id, fs, x, info in pvqd.iter_data(
+        "/i/", auxdata_fields=["Gender", "Age"], include_cape_v="severity"
+    ):
         pass
+
+
+def test_read_data(pvqd):
+    id = "BL01"
+    pvqd.read_data(id, padding=0.01)  # full data file
+    types = pvqd.task_types  # audio segment types
+    for t in types:
+        pvqd.read_data(id, t)

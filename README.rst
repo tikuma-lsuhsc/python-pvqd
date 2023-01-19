@@ -35,34 +35,24 @@ Use
   # to initialize (must call this once in every Python session)
   pvqd = PVQD('<path to the root directory of the extracted database>')
 
-  # to list all the data fields 
-  print(pvqd.get_fields())
 
-  # to list categorical fields' unique values
-  print(pvqd.get_sexes()) # genders
-  print(pvqd.get_natlangs()) # native languages
-  print(pvqd.get_origins()) # races
-  print(pvqd.get_diagnoses()) # diagnoses
+  # to get a copy of the full database with averaged CAPE-V scores
+  df = pvqd.query(include_cape_v=True)
 
-  # to get a copy of the full database
-  df = pvqd.query(include_diagnoses=True)
+  # to get age, gender, and mean GRBAS grade scores
+  df = pvqd.query(["Age", "Gender"], include_grbas='grade')
 
-  # to get age, gender, diagnoses, and MDVP measures of non-smoking 
-  # subjects with polyp or paralysis, F0 between 100 and 300 Hz
-  df = pvqd.query(["AGE","SEX","DIAGNOSES","MDVP"], 
-                    DIAGNOSES=["vocal fold polyp","paralysis"],
-                    Fo=[100,300],
-                    SMOKE=False)
+  # to get a dataframe of WAV files and start and ending timestamps of all /a/ segment
+  df = pvqd.get_files('/a/')
 
-  # to get the list of AH NSP files of normal subjects
-  wavfiles = pvqd.get_files('ah',NORM=True)
-
-  # to iterate over 'rainbow passage' acoustic data of female pathological subjects
-  for fs, x, info in pvqd.iter_data('rainbow',
-                                      auxdata_fields=["AGE","SEX"],
-                                      NORM=False, SEX="F"):
+  # to iterate over '/a/' acoustic data of female participants along with
+  # age and mean GRBAS scores
+  for id, fs, x, auxdata in pvqd.iter_data('/a/',
+                                      auxdata_fields=["Age"],
+                                      include_grbas=True,
+                                      Gender="Female"):
     # run the acoustic data through your analysis function, get measurements
     params = my_analysis_function(fs, x)
 
-    # log the measurements along with the age and gender info
-    my_logger.log_outcome(*info, *params)
+    # log the measurements along with the age and GRBAS info
+    my_logger.log_outcome(id, *auxdata, *params)

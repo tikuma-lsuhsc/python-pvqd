@@ -65,10 +65,12 @@ class PVQD:
             nrows=297,
             keep_default_na=False,
             na_values={"Diagnosis": ""},
+            # fmt:off
             converters={
                 "Participant ID ": lambda v: v.strip().upper(),
-                "Gender": lambda v: {"M": "Male", "F": "Female"}.get(v, v).lower(),
+                "Gender": lambda v: {"m": "male", "f": "female"}.get(v.lower(), v.lower()),
             },
+            # fmt:on
         ).set_index("Participant ID ")
         df.columns = df.columns.str.strip()
         df.index.name = "ID"

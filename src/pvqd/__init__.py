@@ -4,7 +4,7 @@ TODO: download files directly from https://prod-dcd-datasets-cache-zipfiles.s3.e
 """
 
 
-__version__ = "0.1.0.dev2"
+__version__ = "0.1.0.dev3"
 
 import pandas as pd
 from os import path
@@ -16,7 +16,7 @@ from collections.abc import Sequence
 
 
 class PVQD:
-    def __init__(self, dbdir, default_type="/a/", padding=0.0):
+    def __init__(self, dbdir, default_type="/a/", padding=0.0, _timingpath=None):
         """PVQD constructor
 
         :param dbdir: path to the cdrom drive or the directory hosting a copy of the database
@@ -34,9 +34,9 @@ class PVQD:
         self._wavs = None
 
         # load the database
-        self._load_db(dbdir)
+        self._load_db(dbdir, _timingpath)
 
-    def _load_db(self, dbdir):
+    def _load_db(self, dbdir, timingpath):
         """load disordered voice database
 
         :param dbdir: path to the cdrom drive or the directory hosting a copy of the database
@@ -52,6 +52,10 @@ class PVQD:
 
         if self._dir == dbdir:
             return
+
+        if timingpath is None:
+            # use the default timing csv data
+            timingpath = path.join(__path__[0], "timing.csv")
 
         xlsdir = path.join(dbdir, "Ratings Spreadsheets")
 
@@ -105,7 +109,7 @@ class PVQD:
         self._df_rates = df
 
         df = pd.read_csv(
-            "timing.csv",
+            timingpath,
             converters={"Participant ID": lambda v: v.strip().upper()},
         ).set_index(["Participant ID"])
         df.index.name = "ID"

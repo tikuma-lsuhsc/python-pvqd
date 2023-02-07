@@ -61,7 +61,7 @@ class PVQD:
 
         df = pd.read_excel(
             path.join(xlsdir, "Demographics.xlsx"),
-            dtype={"Age": "Int32", "Diagnosis": "string"},
+            dtype={"Age": "Int32", "Diagnosis ": "string"},
             nrows=297,
             keep_default_na=False,
             na_values={"Diagnosis": ""},
@@ -70,6 +70,7 @@ class PVQD:
                 "Gender": lambda v: {"M": "Male", "F": "Female"}.get(v, v).lower(),
             },
         ).set_index("Participant ID ")
+        df.columns = df.columns.str.strip()
         df.index.name = "ID"
         self._df = df
 

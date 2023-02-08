@@ -135,7 +135,7 @@ class PVQD:
 
     def query(
         self,
-        subset=None,
+        columns=None,
         include_cape_v=None,
         include_grbas=None,
         rating_stats=None,
@@ -143,8 +143,8 @@ class PVQD:
     ):
         """query database
 
-        :param subset: database columns to return, defaults to None
-        :type subset: sequence of str, optional
+        :param columns: database columns to return, defaults to None
+        :type columns: sequence of str, optional
         :param include_cape_v: True to include all CAPE-V scales, str or list of str to specify which scale, defaults to None
         :type include_cape_v: bool, 'breathiness', 'loudness','pitch','roughness','severity', list, optional
         :param include_grbas: True to include all GRBAS scales, str or list of str to specify which scale, defaults to None
@@ -186,12 +186,12 @@ class PVQD:
                 df = df[s == fcond]
 
         # return only the selected columns
-        if subset is not None:
+        if columns is not None:
             try:
-                df = df[subset]
+                df = df[columns]
             except:
                 ValueError(
-                    f'At least one label in the "subset" argument is invalid: {subset}'
+                    f'At least one label in the "columns" argument is invalid: {columns}'
                 )
 
         def prep_rating_stats(scale, dfr, includes, stats):

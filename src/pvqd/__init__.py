@@ -4,7 +4,7 @@ TODO: download files directly from https://prod-dcd-datasets-cache-zipfiles.s3.e
 """
 
 
-__version__ = "0.1.0.dev3"
+__version__ = "0.1.0.dev4"
 
 import pandas as pd
 from os import path

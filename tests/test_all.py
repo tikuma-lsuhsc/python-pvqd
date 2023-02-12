@@ -1,21 +1,5 @@
-from pvqd import PVQD
-import pandas as pd
-from os import path
-import numpy as np
 from glob import glob
 import re
-import pytest
-
-
-def load_db():
-    return PVQD(
-        r"C:\Users\Takeshi Ikuma\OneDrive - LSUHSC\data\PVQD",  # olol
-    )
-
-
-@pytest.fixture(scope="module")
-def pvqd():
-    return load_db()
 
 
 def test_query(pvqd):

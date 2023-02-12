@@ -13,18 +13,37 @@ from glob import glob as _glob
 import re
 import wave
 from collections.abc import Sequence
+from typing import Literal, Union, Callable, Tuple, Iterator, Optional
+
+VoiceTask = Literal[
+    "all", "/a/", "/i/", "blue", "hard", "away", "egg", "lemon", "peter"
+]
+CapeVScale = Literal["breathiness", "loudness", "pitch", "roughness", "severity"]
+GRBASScale = Literal["asthenia", "breathiness", "grade", "roughness", "strain"]
+
+DataField = Literal["Gender", "Age", "Diagnosis"]
 
 
 class PVQD:
-    def __init__(self, dbdir, default_type="/a/", padding=0.0, _timingpath=None):
+    def __init__(
+        self,
+        dbdir: str,
+        default_task: VoiceTask = "/a/",
+        default_padding: float = 0.0,
+        _timingpath=None,
+    ):
         """PVQD constructor
 
         :param dbdir: path to the cdrom drive or the directory hosting a copy of the database
         :type dbdir: str
+        :param default_task: default voice task when task is not specified
+        :type default_task: VoiceTask
+        :param default_padding: default amount of extra samples to retrieve in seconds, defaults to 0.0
+        :type default_padding: float
         """
 
-        self.default_type = default_type
-        self.default_padding = padding
+        self.default_task = default_task
+        self.default_padding = default_padding
 
         # database variables
         self._dir = None  # database dir
@@ -130,15 +149,15 @@ class PVQD:
         )
 
     @property
-    def task_types(self):
+    def voice_tasks(self) -> VoiceTask:
         return self._audio_timing.columns.get_level_values(0)
 
     def query(
         self,
-        columns=None,
-        include_cape_v=None,
-        include_grbas=None,
-        rating_stats=None,
+        columns: Sequence[DataField] = None,
+        include_cape_v: Union[bool, CapeVScale, Sequence[CapeVScale]] = None,
+        include_grbas: Union[bool, GRBASScale, Sequence[GRBASScale]] = None,
+        rating_stats: Union[str, Sequence[str], Callable] = None,
         **filters,
     ):
         """query database
@@ -146,11 +165,12 @@ class PVQD:
         :param columns: database columns to return, defaults to None
         :type columns: sequence of str, optional
         :param include_cape_v: True to include all CAPE-V scales, str or list of str to specify which scale, defaults to None
-        :type include_cape_v: bool, 'breathiness', 'loudness','pitch','roughness','severity', list, optional
+        :type include_cape_v: Union[bool, CapeVScale, Sequence[CapeVScale]], optional
         :param include_grbas: True to include all GRBAS scales, str or list of str to specify which scale, defaults to None
-        :type include_grbas: bool, 'asthenia', 'breathiness','grade','roughness','strain', list, optional
-        :param rating_stats: Specify to return per-recording statistics across (up to) 4 raters, defaults to 'mean'
-        :type rating_stats: operation supported by pandas aggregate function, optional
+        :type include_grbas: Union[bool, GRBASScale, Sequence[GRBASScale]], optional
+        :param rating_stats: Specify to return per-recording statistics across (up to) 4 raters.
+                             any operation supported by pandas aggregate function, defaults to ['mean','min','max']
+        :type rating_stats: Union[str, Sequence[str], Callable], optional
         :param **filters: query conditions (values) for specific per-database columns (keys)
         :type **filters: dict
         :return: query result
@@ -230,25 +250,26 @@ class PVQD:
 
     def get_files(
         self,
-        type=None,
-        auxdata_fields=None,
-        include_cape_v=None,
-        include_grbas=None,
-        rating_stats=None,
+        task: VoiceTask = None,
+        auxdata_fields: Sequence[DataField] = None,
+        include_cape_v: Union[bool, CapeVScale, Sequence[CapeVScale]] = None,
+        include_grbas: Union[bool, GRBASScale, Sequence[GRBASScale]] = None,
+        rating_stats: Union[str, Sequence[str], Callable] = None,
         **filters,
     ):
         """get WAV filepaths, and starting and ending time markers
 
-        :param type: utterance type, defaults to None, which is synonymous to "all"
-        :type type: "all", "/a/", "/i/", "blue", "hard", "away", "egg", "lemon", or "peter", optional
+        :param task: utterance task, defaults to None, which is synonymous to "all"
+        :type task: VoiceTask, optional
         :param auxdata_fields: names of auxiliary data fields to return, defaults to None
-        :type auxdata_fields: sequence of str, optional
+        :type auxdata_fields: Sequence[DataField], optional
         :param include_cape_v: True to include all CAPE-V scales, str or list of str to specify which scale, defaults to None
-        :type include_cape_v: bool, 'breathiness', 'loudness','pitch','roughness','severity', list, optional
+        :type include_cape_v: Union[bool, CapeVScale, Sequence[CapeVScale]], optional
         :param include_grbas: True to include all GRBAS scales, str or list of str to specify which scale, defaults to None
-        :type include_grbas: bool, 'asthenia', 'breathiness','grade','roughness','strain', list, optional
-        :param rating_stats: Specify to return per-recording statistics across (up to) 4 raters, defaults to 'mean'
-        :type rating_stats: operation supported by pandas aggregate function, optional
+        :type include_grbas: Union[bool, GRBASScale, Sequence[GRBASScale]], optional
+        :param rating_stats: Specify to return per-recording statistics across (up to) 4 raters.
+                             any operation supported by pandas aggregate function, defaults to ['mean','min','max']
+        :type rating_stats: Union[str, Sequence[str], Callable], optional
         :param **filters: query conditions (values) for specific per-database columns (keys)
         :type **filters: dict
         :return: data frame containing file path, start and end time marks, and auxdata
@@ -277,12 +298,12 @@ class PVQD:
         dir = self._audio_dir
         df = pd.DataFrame(self._audio_files.map(lambda v: path.join(dir, v)))
 
-        if bool(type) and type != "all":
+        if bool(task) and task != "all":
             try:
-                df = df.join(self._audio_timing[type])
+                df = df.join(self._audio_timing[task])
             except:
                 raise ValueError(
-                    f'Unknown type: {type} (must be one of "/a/", "/i/", "blue", "hard", "away", "egg", "lemon", or "peter")'
+                    f'Unknown task: {task} (must be one of "/a/", "/i/", "blue", "hard", "away", "egg", "lemon", or "peter")'
                 )
 
         # eliminate entries without data
@@ -312,29 +333,29 @@ class PVQD:
 
     def iter_data(
         self,
-        type=None,
-        auxdata_fields=None,
-        normalize=True,
-        include_cape_v=None,
-        include_grbas=None,
-        rating_stats=None,
+        task: VoiceTask = None,
+        auxdata_fields: Sequence[DataField] = None,
+        normalize: bool = True,
+        include_cape_v: Union[bool, CapeVScale, Sequence[CapeVScale]] = None,
+        include_grbas: Union[bool, GRBASScale, Sequence[GRBASScale]] = None,
+        rating_stats: Union[str, Sequence[str], Callable] = None,
         **filters,
-    ):
+    ) -> Iterator[Tuple[int, np.array, Optional[pd.Series]]]:
         """iterate over data samples
 
-        :param type: utterance type
-        :type type: "rainbow" or "ah"
-        :param channels: audio channels to read ('a', 'b', 0-1, or a sequence thereof),
-                        defaults to None (all channels)
-        :type channels: str, int, sequence, optional
+        :param task: utterance task
+        :type task: VoiceTask
         :param auxdata_fields: names of auxiliary data fields to return, defaults to None
         :type auxdata_fields: sequence of str, optional
         :param normalize: True to return normalized f64 data, False to return i16 data, defaults to True
         :type normalize: bool, optional
-        :param diagnoses_filter: Function with the signature:
-                                    diagnoses_filter(diagnoses: List[str]) -> bool
-                                 Return true to include the database row to the query
-        :type diagnoses_filter: Function
+        :param include_cape_v: True to include all CAPE-V scales, str or list of str to specify which scale, defaults to None
+        :type include_cape_v: Union[bool, CapeVScale, Sequence[CapeVScale]], optional
+        :param include_grbas: True to include all GRBAS scales, str or list of str to specify which scale, defaults to None
+        :type include_grbas: Union[bool, GRBASScale, Sequence[GRBASScale]], optional
+        :param rating_stats: Specify to return per-recording statistics across (up to) 4 raters.
+                             any operation supported by pandas aggregate function, defaults to ['mean','min','max']
+        :type rating_stats: Union[str, Sequence[str], Callable], optional
         :param **filters: query conditions (values) for specific per-database columns (keys)
         :type **filters: dict
         :yield:
@@ -354,43 +375,25 @@ class PVQD:
             contentSeries
 
                 The column entries belonging to each label, as a Series.
-
-
-
-        Valid values of `auxdata_fields` argument
-        ---------------------------------
-
-        * All columns of the database specified in EXCEL50/TEXT/README.TXT Section 3.1
-        (except for "DIAGNOSIS" and "#")
-        * "DIAGNOSES" - A list containing all the original "DIAGNOSIS" associated with the subject
-        * "NORM" - True if normal data, False if pathological data
-        * "MDVP" - Short-hand notation to include all the MDVP parameter measurements: from "Fo" to "PER"
-
-        Valid `filters` keyword arguments
-        ---------------------------------
-
-        * All columns of the database specified in EXCEL50/TEXT/README.TXT Section 3.1
-        (except for "DIAGNOSIS" and "#")
-        * "DIAGNOSES" - A list containing all the original "DIAGNOSIS" associated with the subject
-        * "NORM" - True if normal data, False if pathological data
-
-        Valid `filters` keyword argument values
-        ---------------------------------------
-
-        * A scalar value
-        * For numeric and date columns, 2-element sequence to define a range: [start, end)
-        * For all other columns, a sequence of allowable values
         """
 
         df = self.get_files(
-            type,
+            task,
             auxdata_fields,
             include_cape_v,
             include_grbas,
             rating_stats,
             **filters,
         )
-
+        """
+                :param include_cape_v: True to include all CAPE-V scales, str or list of str to specify which scale, defaults to None
+                :type include_cape_v: Union[bool, CapeVScale, Sequence[CapeVScale]], optional
+                :param include_grbas: True to include all GRBAS scales, str or list of str to specify which scale, defaults to None
+                :type include_grbas: Union[bool, GRBASScale, Sequence[GRBASScale]], optional
+                :param rating_stats: Specify to return per-recording statistics across (up to) 4 raters.
+                                    any operation supported by pandas aggregate function, defaults to ['mean','min','max']
+                :type rating_stats: Union[str, Sequence[str], Callable], optional
+        """
         aux_cols = df.columns[3:]
 
         for id, file, tstart, tend, *auxdata in df.itertuples():
@@ -403,14 +406,31 @@ class PVQD:
             else:
                 yield id, framerate, x
 
-    def read_data(self, id, type=None, normalize=True, padding=None):
+    def read_data(
+        self,
+        id: str,
+        task: VoiceTask = None,
+        normalize: bool = True,
+        padding: float = None,
+    ) -> Tuple[int, np.array]:
+        """read data samples
 
-        if not type:
-            type = self.default_type
+        :param id: recording ID
+        :type id: str
+        :param task: utterance task, defaults to None (use default_task)
+        :type task: VoiceTask
+        :param normalize: True to return normalized f64 data, False to return i16 data, defaults to True
+        :type normalize: bool, optional
+        :param padding: default amount of extra samples to retrieve in seconds, defaults to None (default_padding)
+        :type padding: float
+        :return: sampling rate in Samples/second and numpy array
+        :rtype: Tuple[int, np.array]
+        """
+        if not task:
+            task = self.default_task
 
-        if type != "all":
-            tstart, tend = self._audio_timing.loc[id, type]
-
+        if task != "all":
+            tstart, tend = self._audio_timing.loc[id, task]
         else:
             tstart = tend = None
 
@@ -423,7 +443,6 @@ class PVQD:
         )
 
     def _read_file(self, file, tstart=None, tend=None, normalize=True, padding=None):
-
         if not padding:
             padding = self.default_padding
 
@@ -431,8 +450,8 @@ class PVQD:
             id = re.match(r"(\D+\d+)", path.basename(file))[1].upper()
 
             ts = self._audio_timing.loc[id].sort_values()
-            type = ts[ts == tstart].index[0][0]
-            i = np.where(ts.index.get_loc(type))[0]
+            task = ts[ts == tstart].index[0][0]
+            i = np.where(ts.index.get_loc(task))[0]
 
             tstart -= padding
             tend += padding
@@ -463,5 +482,15 @@ class PVQD:
 
         return framerate, x
 
-    def __getitem__(self, key):
+    def __getitem__(self, key) -> Tuple[int, np.array]:
+        """get recording data by id
+
+        :param key: recording id
+        :type key: str
+        :return: sampling rate in Samples/second and numpy array
+        :rtype: Tuple[int, np.array]
+
+        The function returns acoustic data of the default voice task 
+        (PVQD.default_task) with default padding (PVQD.default_padding)
+        """
         return self.read_data(key)
